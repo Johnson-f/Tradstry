@@ -57,6 +57,7 @@ pub fn build_schema(
     pool: PgPool,
     stytch: Arc<dyn StytchApi>,
     brokerage: Option<Arc<Brokerage>>,
+    note_images_dir: std::path::PathBuf,
 ) -> AppSchema {
     let mut builder = Schema::build(
         Query::default(),
@@ -65,6 +66,7 @@ pub fn build_schema(
     )
     .data(crate::realtime::Hub::new(pool.clone()))
     .data(pool)
+    .data(note_images_dir)
     .data(stytch);
     if let Some(brokerage) = brokerage {
         builder = builder.data(brokerage);

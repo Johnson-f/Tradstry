@@ -746,13 +746,18 @@ async fn graphql(
         .verify(&test_jwt::sign(&token))
         .await
         .unwrap();
-    build_schema(pool.clone(), Arc::new(FakeStytch::default()), brokerage)
-        .execute(
-            Request::new(query)
-                .data(claims)
-                .data(RequestUser::default()),
-        )
-        .await
+    build_schema(
+        pool.clone(),
+        Arc::new(FakeStytch::default()),
+        brokerage,
+        std::env::temp_dir(),
+    )
+    .execute(
+        Request::new(query)
+            .data(claims)
+            .data(RequestUser::default()),
+    )
+    .await
 }
 
 fn code(response: &Response) -> Option<String> {

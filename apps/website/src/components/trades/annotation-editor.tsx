@@ -1,4 +1,4 @@
-import { Check, LoaderCircle, PencilLine, SlidersHorizontal } from 'lucide-react'
+import { Check, ListChecks, LoaderCircle, PencilLine, Shield, SlidersHorizontal, Tags } from 'lucide-react'
 import { useBlocker } from '@tanstack/react-router'
 import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -13,15 +13,16 @@ import {
 } from '@/components/ui/dialog'
 import { GraphQLRequestError } from '@/lib/client/api'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PlanLink } from '@/components/plans/plan-link'
 import { BehaviorFields } from '@/components/trades/behavior-fields'
 import { FormField, MoneyInput } from '@/components/trades/instrument-fields'
 import { LabelDot, LabelMultiSelect } from '@/components/trades/label-picker'
 import { ManageLabelsDialog } from '@/components/trades/manage-labels-dialog'
 import { TradeNoteEditor } from '@/components/trades/trade-note-editor'
-import { noteDocumentError, noteKey } from '@/lib/client/trades/note-document'
+import { noteDocumentError, noteKey, PENDING_IMAGE_MESSAGE } from '@/lib/client/trades/note-document'
 import { useJournalLabels } from '@/lib/client/trades/labels'
-import { type SuggestedStop, useSaveAnnotation } from '@/lib/client/trades/trades'
+import { type SuggestedStop, type TradeFill, useSaveAnnotation } from '@/lib/client/trades/trades'
 import {
   type AnnotationDraft,
   type LabelRef,
@@ -51,29 +52,23 @@ function orderTypeLabel(type: string): string {
   return ORDER_TYPE[type.toLowerCase().replace(/[\s_-]/g, '')] ?? type.toLowerCase()
 }
 
-function DetailSection({
-  title,
-  description,
+function DetailTab({
+  value,
+  disabled,
   children,
 }: {
-  title: string
-  description?: string
+  value: string
+  disabled: boolean
   children: React.ReactNode
 }) {
-  const headingId = useId()
   return (
-    <section
-      aria-labelledby={headingId}
-      className="space-y-4 border-t border-border/60 pt-5 first:border-t-0 first:pt-0"
-    >
-      <div className="space-y-0.5">
-        <h3 id={headingId} className="text-sm font-semibold">
-          {title}
-        </h3>
-        {description && <p className="text-xs leading-5 text-muted-foreground">{description}</p>}
-      </div>
-      {children}
-    </section>
+    <TabsContent value={value} className="min-h-0">
+      <ScrollArea className="h-full overflow-hidden [&>[data-slot=scroll-area-viewport]]:overscroll-contain">
+        <fieldset disabled={disabled} className="min-w-0 space-y-4 px-5 py-5 sm:px-6">
+          {children}
+        </fieldset>
+      </ScrollArea>
+    </TabsContent>
   )
 }
 
@@ -99,6 +94,7 @@ function draftKey(draft: AnnotationDraft): string {
 interface EditorProps {
   workspaceId: string
   trade: TradeSummary
+  fills: TradeFill[]
   suggestedStop: SuggestedStop | null
   context?: React.ReactNode
   onFlushChange: (flush: (() => Promise<boolean>) | null) => void
@@ -112,6 +108,7 @@ interface EditorProps {
 export function AnnotationEditor({
   workspaceId,
   trade,
+  fills,
   suggestedStop,
   context,
   onFlushChange,
@@ -120,6 +117,7 @@ export function AnnotationEditor({
   const id = useId()
   const annotation: TradeAnnotation | null = trade.annotation
   const [detailsOpen, setDetailsOpen] = useState(false)
+  const labelsTab = useRef<HTMLButtonElement>(null)
   const save = useSaveAnnotation(workspaceId, trade.id)
   const [draft, setDraft] = useState<AnnotationDraft>(() => annotationDraft(annotation))
   const [initialNotes, setInitialNotes] = useState(() => draft.notes)
@@ -155,6 +153,7 @@ export function AnnotationEditor({
     latest.current = { draft, key, base, invalid, conflict }
   })
   const pending = useRef<Promise<boolean> | null>(null)
+  const imageFlushRef = useRef<(() => Promise<boolean>) | null>(null)
   const persist = useRef<() => Promise<boolean>>(() => Promise.resolve(true))
 
   const set = (change: Partial<AnnotationDraft>) => {
@@ -173,7 +172,13 @@ export function AnnotationEditor({
         while (latest.current.key !== latest.current.base.key) {
           const current = latest.current
           const nextInput = annotationInput(current.draft)
-          if (current.invalid || current.conflict || noteDocumentError(current.draft.notes) || !nextInput.ok) return false
+          const documentError = noteDocumentError(current.draft.notes)
+          if (current.conflict || (current.invalid && current.invalid !== PENDING_IMAGE_MESSAGE)) return false
+          if (documentError === PENDING_IMAGE_MESSAGE) {
+            if (!(await imageFlushRef.current?.()) || noteDocumentError(latest.current.draft.notes) === PENDING_IMAGE_MESSAGE) return false
+            continue
+          }
+          if (documentError || !nextInput.ok) return false
           const sentKey = current.key
           setFailedKey(null)
           try {
@@ -182,6 +187,8 @@ export function AnnotationEditor({
             latest.current.base = nextBase
             setBase(nextBase)
           } catch (error) {
+            // An unsaved image can be discarded while an older draft is in flight.
+            if (error instanceof GraphQLRequestError && error.code === 'INVALID_NOTE_IMAGE' && sentKey !== latest.current.key) continue
             latest.current.conflict = error instanceof GraphQLRequestError && error.code === 'CONFLICT'
             setFailedKey(latest.current.key)
             return false
@@ -272,6 +279,60 @@ export function AnnotationEditor({
     risk !== null ||
     chips.length
 
+  const validationError = invalid === PENDING_IMAGE_MESSAGE ? null : invalid
+  const saveFeedback = (
+    <>
+      {(validationError || problem || save.error || remoteChanged) && (
+        <div role="alert" className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-destructive">
+          <span>
+            {validationError ??
+              problem ??
+              (saveConflict
+                ? 'This note changed on another device, so your latest changes were not saved.'
+                : remoteChanged
+                  ? 'This note changed on another device. Your edits here are paused until you load it.'
+                  : tradeErrorMessage(save.error, 'Could not save your changes.'))}
+          </span>
+          {!invalid && (!problem || conflict) && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 px-2.5 text-xs"
+              disabled={save.isPending || reloading}
+              onClick={() => {
+                if (conflict) void reload()
+                else void persist.current()
+              }}
+            >
+              {conflict ? 'Load latest version' : 'Try again'}
+            </Button>
+          )}
+        </div>
+      )}
+      <p role="status" className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+        {save.isPending || reloading ? (
+          <>
+            <LoaderCircle className="size-3.5 shrink-0 animate-spin" aria-hidden />
+            {reloading ? 'Loading latest note…' : 'Saving…'}
+          </>
+        ) : dirty ? (
+          <>
+            <PencilLine className="size-3.5 shrink-0" aria-hidden />
+            {invalid === PENDING_IMAGE_MESSAGE ? 'Waiting for image upload…' : invalid || save.error ? 'Not saved' : 'Editing…'}
+          </>
+        ) : base.savedAt ? (
+          <>
+            <Check className="size-3.5 shrink-0" aria-hidden />
+            Saved {formatDateTime(base.savedAt)}
+          </>
+        ) : (
+          'Changes save automatically'
+        )}
+      </p>
+    </>
+  )
+
   return (
     <Dialog open={detailsOpen} onOpenChange={setDetailsOpen}>
       <div className="@container/note-editor flex min-h-0 flex-1 flex-col">
@@ -347,9 +408,12 @@ export function AnnotationEditor({
               onLink={(plan) => set({ initialStop: plan.stop, plannedRisk: plan.risk })}
             />
             <div className="mt-6">
-              <h3 className="text-2xl font-semibold tracking-tight">Trade Notes</h3>
               <TradeNoteEditor
                 key={editorRevision}
+                workspaceId={workspaceId}
+                imageFlushRef={imageFlushRef}
+                tradeId={trade.id}
+                fills={fills}
                 initialValue={initialNotes}
                 disabled={reloading}
                 onChange={(notes) => set({ notes })}
@@ -359,64 +423,18 @@ export function AnnotationEditor({
           </fieldset>
         </ScrollArea>
         <footer className="shrink-0 border-t border-border/60 px-6 py-3">
-          {(invalid || problem || save.error || remoteChanged) && (
-            <div role="alert" className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-destructive">
-              <span>
-                {invalid ??
-                  problem ??
-                  (saveConflict
-                    ? 'This note changed on another device, so your latest changes were not saved.'
-                    : remoteChanged
-                      ? 'This note changed on another device. Your edits here are paused until you load it.'
-                      : tradeErrorMessage(save.error, 'Could not save your changes.'))}
-              </span>
-              {!invalid && (!problem || conflict) && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-7 px-2.5 text-xs"
-                  disabled={save.isPending || reloading}
-                  onClick={() => {
-                    if (conflict) void reload()
-                    else void persist.current()
-                  }}
-                >
-                  {conflict ? 'Load latest version' : 'Try again'}
-                </Button>
-              )}
-            </div>
-          )}
-          <p role="status" className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-            {save.isPending || reloading ? (
-              <>
-                <LoaderCircle className="size-3.5 shrink-0 animate-spin" aria-hidden />
-                {reloading ? 'Loading latest note…' : 'Saving…'}
-              </>
-            ) : dirty ? (
-              <>
-                <PencilLine className="size-3.5 shrink-0" aria-hidden />
-                {invalid || save.error ? 'Not saved' : 'Editing…'}
-              </>
-            ) : base.savedAt ? (
-              <>
-                <Check className="size-3.5 shrink-0" aria-hidden />
-                Saved {formatDateTime(base.savedAt)}
-              </>
-            ) : (
-              'Changes save automatically'
-            )}
-          </p>
+          {saveFeedback}
         </footer>
       </div>
       <DialogContent
-        overlayClassName="bg-black/40 data-open:animate-none data-closed:animate-none"
-        className="flex h-[min(38rem,calc(100dvh-2rem))] max-w-[calc(100vw-2rem)] flex-col gap-0 overflow-hidden rounded-2xl p-0 font-sans shadow-2xl sm:max-w-lg data-open:animate-none data-closed:animate-none [&>[data-slot=dialog-close]]:top-4 [&>[data-slot=dialog-close]]:right-4"
+        initialFocus={labelsTab}
+        overlayClassName="bg-black/25 data-open:animate-none data-closed:animate-none"
+        className="@container/note-editor flex h-[min(26rem,85dvh)] max-w-[calc(100vw-1.5rem)] flex-col gap-0 overflow-hidden rounded-2xl p-0 font-sans shadow-xl sm:max-w-[38rem] data-open:animate-none data-closed:animate-none [&>[data-slot=dialog-close]]:top-4 [&>[data-slot=dialog-close]]:right-4"
       >
-        <DialogHeader className="shrink-0 gap-1.5 px-6 pt-6 pb-4 pr-12">
-          <DialogTitle className="text-lg leading-6 font-semibold">Trade Detail</DialogTitle>
-          <DialogDescription className="text-[13px] leading-5">
-            Label the trade, set its risk and note how you traded it. Changes save automatically.
+        <DialogHeader className="shrink-0 gap-1.5 px-5 pt-5 pb-3 pr-14 sm:px-6 sm:pr-14">
+          <DialogTitle className="text-xl leading-7 font-semibold tracking-tight">Trade Detail</DialogTitle>
+          <DialogDescription render={<div />} className="min-w-0">
+            {context}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -429,16 +447,29 @@ export function AnnotationEditor({
             }
           }}
         >
-          <ScrollArea className="min-h-0 flex-1 overflow-hidden border-t border-border/60 [&>[data-slot=scroll-area-viewport]]:overscroll-contain">
-            <fieldset disabled={reloading} className="min-w-0 space-y-6 px-6 py-5">
-              <DetailSection title="Labels">
+          <Tabs defaultValue="labels" className="min-h-0 flex-1 gap-0">
+            <div className="shrink-0 border-b px-5 sm:px-6">
+              <TabsList variant="line" aria-label="Trade detail sections" className="gap-2 p-0 group-data-horizontal/tabs:h-10">
+                <TabsTrigger ref={labelsTab} value="labels" className="px-2.5 group-data-horizontal/tabs:after:-bottom-px">
+                  <Tags aria-hidden /> Labels
+                </TabsTrigger>
+                <TabsTrigger value="risk" className="px-2.5 group-data-horizontal/tabs:after:-bottom-px">
+                  <Shield aria-hidden /> Risk
+                </TabsTrigger>
+                <TabsTrigger value="review" className="px-2.5 group-data-horizontal/tabs:after:-bottom-px">
+                  <ListChecks aria-hidden /> Review
+                </TabsTrigger>
+              </TabsList>
+            </div>
+            <DetailTab value="labels" disabled={reloading}>
+              <div className="grid gap-x-5 gap-y-4 sm:grid-cols-2">
                 <FormField id={`${id}-edge`} label="Edges">
                   <LabelMultiSelect
                     id={`${id}-edge`}
                     kind="EDGE"
                     value={draft.edgeIds}
                     chosen={chosen(saved.edgeIds)}
-                    placeholder="Strong relative volume"
+                    placeholder="Add an edge…"
                     onChange={(edgeIds) => set({ edgeIds })}
                     onError={setProblem}
                   />
@@ -449,7 +480,7 @@ export function AnnotationEditor({
                     kind="ENTRY_TACTIC"
                     value={draft.entryTacticIds}
                     chosen={chosen(saved.entryTacticIds)}
-                    placeholder="Breakout retest"
+                    placeholder="Add an entry tactic…"
                     onChange={(entryTacticIds) => set({ entryTacticIds })}
                     onError={setProblem}
                   />
@@ -460,7 +491,7 @@ export function AnnotationEditor({
                     kind="TAG"
                     value={draft.tagIds}
                     chosen={chosen(saved.tagIds)}
-                    placeholder="Gap up, earnings"
+                    placeholder="Add a tag…"
                     onChange={(tagIds) => set({ tagIds })}
                     onError={setProblem}
                   />
@@ -471,74 +502,76 @@ export function AnnotationEditor({
                     kind="MISTAKE"
                     value={draft.mistakeIds}
                     chosen={chosen(saved.mistakeIds)}
-                    placeholder="Chased the entry"
+                    placeholder="Add a mistake…"
                     onChange={(mistakeIds) => set({ mistakeIds })}
                     onError={setProblem}
                   />
                 </FormField>
-              </DetailSection>
-              <DetailSection title="Risk">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <FormField id={`${id}-stop`} label="Initial stop">
-                    <MoneyInput
-                      id={`${id}-stop`}
-                      value={draft.initialStop}
-                      placeholder="0.00"
-                      aria-describedby={`${id}-risk-hint`}
-                      onChange={(event) => set({ initialStop: event.target.value })}
-                    />
-                  </FormField>
-                  <FormField id={`${id}-risk`} label="Planned risk">
-                    <MoneyInput
-                      id={`${id}-risk`}
-                      value={draft.plannedRisk}
-                      placeholder="Optional"
-                      aria-describedby={`${id}-risk-hint`}
-                      onChange={(event) => set({ plannedRisk: event.target.value })}
-                    />
-                  </FormField>
-                </div>
-                <div id={`${id}-risk-hint`} className="space-y-1.5 text-xs leading-5 text-muted-foreground">
-                  {suggestedStop && draft.initialStop.trim() === '' && (
-                    <p>
-                      Your {orderTypeLabel(suggestedStop.orderType)} order on {formatDate(suggestedStop.placedAt)} put
-                      the stop at <span className="text-foreground tabular-nums">{price(suggestedStop.price)}</span>.{' '}
-                      <button
-                        type="button"
-                        className="font-medium text-foreground underline underline-offset-4"
-                        onClick={() => set({ initialStop: suggestedStop.price })}
-                      >
-                        Use it
-                      </button>
-                    </p>
-                  )}
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs leading-5 text-muted-foreground">
+                <span>Type to find or create a label.</span>
+                <ManageLabelsDialog triggerStyle="link" />
+              </div>
+            </DetailTab>
+            <DetailTab value="risk" disabled={reloading}>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField id={`${id}-stop`} label="Initial stop">
+                  <MoneyInput
+                    id={`${id}-stop`}
+                    value={draft.initialStop}
+                    placeholder="0.00"
+                    aria-describedby={`${id}-risk-hint`}
+                    onChange={(event) => set({ initialStop: event.target.value })}
+                  />
+                </FormField>
+                <FormField id={`${id}-risk`} label="Planned risk">
+                  <MoneyInput
+                    id={`${id}-risk`}
+                    value={draft.plannedRisk}
+                    placeholder="Optional"
+                    aria-describedby={`${id}-risk-hint`}
+                    onChange={(event) => set({ plannedRisk: event.target.value })}
+                  />
+                </FormField>
+              </div>
+              <div id={`${id}-risk-hint`} className="space-y-1.5 text-xs leading-5 text-muted-foreground">
+                {suggestedStop && draft.initialStop.trim() === '' && (
                   <p>
-                    {risk === null
-                      ? 'R uses your initial stop, or your planned risk if you set one.'
-                      : `Risk ${money(String(risk))}${r === null ? '' : ` · ${rMultiple(String(r))}`}${
-                          draft.plannedRisk.trim() ? ', from your planned risk.' : ', from the initial stop.'
-                        }`}
+                    Your {orderTypeLabel(suggestedStop.orderType)} order on {formatDate(suggestedStop.placedAt)} put
+                    the stop at <span className="text-foreground tabular-nums">{price(suggestedStop.price)}</span>.{' '}
+                    <button
+                      type="button"
+                      className="font-medium text-foreground underline underline-offset-4"
+                      onClick={() => set({ initialStop: suggestedStop.price })}
+                    >
+                      Use it
+                    </button>
                   </p>
+                )}
+                <p>Planned risk overrides the amount calculated from your stop.</p>
+              </div>
+              <dl className="grid grid-cols-2 divide-x rounded-lg bg-muted/50 py-3">
+                <div className="px-4">
+                  <dt className="text-xs text-muted-foreground">Risk at entry</dt>
+                  <dd className="mt-1 text-base font-semibold tabular-nums">{money(risk?.toString() ?? null)}</dd>
                 </div>
-              </DetailSection>
-              <DetailSection title="How you traded it" description="Optional. Pick an answer again to clear it.">
-                <BehaviorFields
-                  value={draft.behavior}
-                  onChange={(change) => set({ behavior: { ...latest.current.draft.behavior, ...change } })}
-                />
-              </DetailSection>
-              {(problem || !input.ok) && (
-                <p role="alert" className="text-xs text-destructive">
-                  {problem ?? (input.ok ? null : input.message)}
-                </p>
-              )}
-            </fieldset>
-          </ScrollArea>
-          <DialogFooter className="m-0 shrink-0 flex-row items-center justify-between gap-3 rounded-b-2xl bg-muted/20 px-6 py-3 sm:justify-between">
-            <p className="text-xs text-muted-foreground">
-              <ManageLabelsDialog triggerStyle="link" />
-            </p>
-            <Button type="submit" variant="outline" className="h-8 px-4">
+                <div className="px-4">
+                  <dt className="text-xs text-muted-foreground">R-multiple</dt>
+                  <dd className="mt-1 text-base font-semibold tabular-nums">{rMultiple(r?.toString() ?? null)}</dd>
+                </div>
+              </dl>
+            </DetailTab>
+            <DetailTab value="review" disabled={reloading}>
+              <BehaviorFields
+                value={draft.behavior}
+                onChange={(change) => set({ behavior: { ...latest.current.draft.behavior, ...change } })}
+              />
+              <p className="text-xs text-muted-foreground">Select an answer again to clear it.</p>
+            </DetailTab>
+          </Tabs>
+          <DialogFooter className="m-0 shrink-0 flex-row items-center justify-between gap-3 rounded-b-2xl bg-muted/20 px-5 py-3 sm:justify-between sm:px-6">
+            <div className="min-w-0">{saveFeedback}</div>
+            <Button type="submit" className="shrink-0 px-5">
               Done
             </Button>
           </DialogFooter>

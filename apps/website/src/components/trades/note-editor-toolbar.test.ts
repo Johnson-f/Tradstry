@@ -38,7 +38,7 @@ test('format buttons turn off after caret format changes and keep other formats'
     };
     async function reset() {
       await act(async () => {
-        root.render(h(TradeNoteEditor, { key: revision++, initialValue: createNoteDocument(),
+        root.render(h(TradeNoteEditor, { key: revision++, workspaceId: 'w', tradeId: 't', fills: [], initialValue: createNoteDocument(),
           disabled: false, onChange() {}, onError(message) { errors.push(message); } }));
         await settle();
       });

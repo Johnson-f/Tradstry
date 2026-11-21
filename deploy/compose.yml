@@ -42,6 +42,7 @@ services:
       # The password must be URL-safe (openssl rand -hex 32).
       DATABASE_URL: postgres://tradstry:${POSTGRES_PASSWORD}@postgres:5432/tradstry
       DATABASE_SCHEMA: prod
+      NOTE_IMAGES_DIR: /data/note-images
       PORT: "7900"
       WEBSITE_URL: https://tradstry.com
       CORS_ALLOWED_ORIGINS: https://tradstry.com,https://www.tradstry.com
@@ -49,6 +50,12 @@ services:
       RUST_LOG: info,sqlx=warn
     expose:
       - "7900"
+    volumes:
+      - type: bind
+        source: /var/lib/tradstry/note-images
+        target: /data/note-images
+        bind:
+          create_host_path: false
     networks:
       - tradstry-network
     depends_on:

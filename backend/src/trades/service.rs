@@ -576,6 +576,7 @@ pub(super) async fn anchor_fill(
 /// match an existing entry's version, so two devices cannot overwrite each other.
 pub async fn save_annotation(
     pool: &PgPool,
+    image_dir: &std::path::Path,
     user_id: Uuid,
     workspace_id: Uuid,
     trade_id: &str,
@@ -666,6 +667,9 @@ pub async fn save_annotation(
             id
         }
     };
+    let removed =
+        super::note_images::attach(&mut tx, user_id, workspace_id, trade_id, id, &input.notes.0)
+            .await?;
     for (ids, kind) in &chosen {
         sqlx::query(
             "INSERT INTO trade_annotation_labels (annotation_id, label_id, kind) SELECT $1, unnest($2::uuid[]), $3",
@@ -677,6 +681,7 @@ pub async fn save_annotation(
         .await?;
     }
     tx.commit().await?;
+    super::note_images::purge_removed(pool, image_dir, &removed).await;
     Ok(id)
 }
 
@@ -718,15 +723,38 @@ pub async fn reassign_annotation(
     Ok(())
 }
 
-pub async fn delete_annotation(pool: &PgPool, user_id: Uuid, id: Uuid) -> Result<()> {
+pub async fn delete_annotation(
+    pool: &PgPool,
+    image_dir: &std::path::Path,
+    user_id: Uuid,
+    id: Uuid,
+) -> Result<()> {
+    let mut tx = pool.begin().await?;
+    // Take the same note lock as save_annotation before locking any of its images.
+    sqlx::query("SELECT id FROM trade_annotations WHERE id=$1 AND user_id=$2 FOR UPDATE")
+        .bind(id)
+        .bind(user_id)
+        .fetch_optional(&mut *tx)
+        .await?
+        .ok_or(TradeError::NotFound)?;
+    let removed: Vec<Uuid> = sqlx::query_scalar(
+        "UPDATE trade_note_images SET delete_after=now()
+        WHERE annotation_id=$1 AND user_id=$2 RETURNING id",
+    )
+    .bind(id)
+    .bind(user_id)
+    .fetch_all(&mut *tx)
+    .await?;
     let deleted = sqlx::query("DELETE FROM trade_annotations WHERE id = $1 AND user_id = $2")
         .bind(id)
         .bind(user_id)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?
         .rows_affected();
     if deleted == 0 {
         return Err(TradeError::NotFound);
     }
+    tx.commit().await?;
+    super::note_images::purge_removed(pool, image_dir, &removed).await;
     Ok(())
 }

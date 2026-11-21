@@ -1,5 +1,6 @@
 {
   "root": {
+    "$": { "title": "Breakout review" },
     "children": [
       {
         "children": [
@@ -118,7 +119,19 @@
             "format": 0,
             "mode": "normal",
             "style": "",
-            "text": "Follow the plan.",
+            "text": "Follow the plan. ",
+            "type": "text",
+            "version": 1
+          },
+          {
+            "$": {
+              "fillReference": { "tradeId": "trade-1", "fillKey": "fill-1", "fillNumber": 1 }
+            },
+            "detail": 0,
+            "format": 0,
+            "mode": "token",
+            "style": "",
+            "text": "@Fill #1 · Open · 5 at $100.00 · Nov 3, 12:04 PM",
             "type": "text",
             "version": 1
           }
@@ -208,6 +221,92 @@
         "format": "",
         "indent": 0,
         "type": "list",
+        "version": 1
+      },
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "children": [
+                  {
+                    "children": [
+                      {
+                        "detail": 0,
+                        "format": 0,
+                        "mode": "normal",
+                        "style": "",
+                        "text": "Setup",
+                        "type": "text",
+                        "version": 1
+                      }
+                    ],
+                    "direction": null,
+                    "format": "",
+                    "indent": 0,
+                    "textFormat": 0,
+                    "textStyle": "",
+                    "type": "paragraph",
+                    "version": 1
+                  }
+                ],
+                "backgroundColor": null,
+                "colSpan": 1,
+                "headerState": 1,
+                "rowSpan": 1,
+                "direction": null,
+                "format": "",
+                "indent": 0,
+                "type": "tablecell",
+                "version": 1
+              },
+              {
+                "children": [
+                  {
+                    "children": [
+                      {
+                        "detail": 0,
+                        "format": 0,
+                        "mode": "normal",
+                        "style": "",
+                        "text": "Result",
+                        "type": "text",
+                        "version": 1
+                      }
+                    ],
+                    "direction": null,
+                    "format": "",
+                    "indent": 0,
+                    "textFormat": 0,
+                    "textStyle": "",
+                    "type": "paragraph",
+                    "version": 1
+                  }
+                ],
+                "backgroundColor": null,
+                "colSpan": 1,
+                "headerState": 1,
+                "rowSpan": 1,
+                "direction": null,
+                "format": "",
+                "indent": 0,
+                "type": "tablecell",
+                "version": 1
+              }
+            ],
+            "direction": null,
+            "format": "",
+            "indent": 0,
+            "type": "tablerow",
+            "height": 72,
+            "version": 1
+          }
+        ],
+        "direction": null,
+        "format": "",
+        "indent": 0,
+        "type": "table",
+        "colWidths": [160, 220],
         "version": 1
       }
     ],

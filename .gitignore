@@ -1,5 +1,6 @@
 backend/target/
 backend/.env
+backend/.data/
 docs/plans/
 deploy/.env
 deploy/backend.env

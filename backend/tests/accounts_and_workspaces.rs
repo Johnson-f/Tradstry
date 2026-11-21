@@ -53,7 +53,7 @@ async fn claims(token_claims: &Value) -> AuthClaims {
 }
 
 async fn run(pool: &PgPool, stytch: &Arc<FakeStytch>, claims: AuthClaims, query: &str) -> Response {
-    build_schema(pool.clone(), stytch.clone(), None)
+    build_schema(pool.clone(), stytch.clone(), None, std::env::temp_dir())
         .execute(
             Request::new(query)
                 .data(claims)

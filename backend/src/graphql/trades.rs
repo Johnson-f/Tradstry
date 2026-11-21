@@ -1298,6 +1298,7 @@ impl TradeMutation {
         };
         let id = service::save_annotation(
             &pool,
+            ctx.data::<std::path::PathBuf>()?,
             user_id,
             workspace_id,
             &trade_id,
@@ -1332,9 +1333,14 @@ impl TradeMutation {
         require_web_session(ctx)?;
         let pool = ctx.data::<PgPool>()?;
         let user = current_user(ctx).await?;
-        service::delete_annotation(pool, user.id, parse_id(&id)?)
-            .await
-            .map_err(trade_error)?;
+        service::delete_annotation(
+            pool,
+            ctx.data::<std::path::PathBuf>()?,
+            user.id,
+            parse_id(&id)?,
+        )
+        .await
+        .map_err(trade_error)?;
         Ok(true)
     }
 }

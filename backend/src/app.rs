@@ -27,6 +27,7 @@ use crate::{
 
 /// What the app needs from the outside world. Tests build it with fakes.
 pub struct Services {
+    pub note_images_dir: std::path::PathBuf,
     pub verifier: TokenVerifier,
     pub pool: PgPool,
     pub stytch: Arc<dyn StytchApi>,
@@ -38,6 +39,7 @@ pub struct Services {
 
 #[derive(Clone)]
 pub struct AppState {
+    pub note_images_dir: std::path::PathBuf,
     pub verifier: TokenVerifier,
     pub schema: AppSchema,
     pub pool: PgPool,
@@ -54,7 +56,9 @@ impl AppState {
                 services.pool.clone(),
                 services.stytch.clone(),
                 services.brokerage.clone(),
+                services.note_images_dir.clone(),
             ),
+            note_images_dir: services.note_images_dir,
             verifier: services.verifier,
             pool: services.pool,
             stytch: services.stytch,
@@ -70,6 +74,7 @@ impl AppState {
 #[doc(hidden)]
 pub fn test_services(pool: PgPool) -> Services {
     Services {
+        note_images_dir: std::env::temp_dir().join("tradstry-note-images-tests"),
         verifier: crate::auth::test_jwt::test_verifier(),
         pool,
         stytch: Arc::new(crate::auth::stytch::fake::FakeStytch::default()),
@@ -89,10 +94,11 @@ pub fn router(state: AppState, cors_allowed_origins: Vec<HeaderValue>) -> Router
     let mcp = state
         .mcp
         .clone()
-        .map(|settings| mcp::router(state.pool.clone(), settings))
+        .map(|settings| mcp::router(state.pool.clone(), settings, state.note_images_dir.clone()))
         .unwrap_or_default();
     Router::new()
         .route("/health", get(health))
+        .merge(crate::trades::note_images::router())
         .route("/graphql", graphql_route())
         .route("/graphql/ws", get(graphql::graphql_ws_handler))
         .route("/webhooks/stytch", post(webhooks::stytch::stytch_webhook))

@@ -4,8 +4,15 @@ import { cn } from "cn"
 function ScrollArea({
   className,
   children,
+  orientation = "vertical",
+  viewportRef,
+  contentRef,
   ...props
-}: ScrollAreaPrimitive.Root.Props) {
+}: ScrollAreaPrimitive.Root.Props & {
+  orientation?: ScrollAreaPrimitive.Scrollbar.Props["orientation"]
+  viewportRef?: React.Ref<HTMLDivElement>
+  contentRef?: React.Ref<HTMLDivElement>
+}) {
   return (
     <ScrollAreaPrimitive.Root
       data-slot="scroll-area"
@@ -13,14 +20,20 @@ function ScrollArea({
       {...props}
     >
       <ScrollAreaPrimitive.Viewport
+        ref={viewportRef}
         data-slot="scroll-area-viewport"
         className="size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1"
+        style={orientation === "horizontal" ? { overflowX: "auto", overflowY: "hidden" } : undefined}
       >
-        <ScrollAreaPrimitive.Content className="min-h-full" style={{ minWidth: 0 }}>
+        <ScrollAreaPrimitive.Content
+          ref={contentRef}
+          className="min-h-full"
+          style={orientation === "vertical" ? { minWidth: 0 } : undefined}
+        >
           {children}
         </ScrollAreaPrimitive.Content>
       </ScrollAreaPrimitive.Viewport>
-      <ScrollBar />
+      <ScrollBar orientation={orientation} contentEditable={orientation === "horizontal" ? false : undefined} />
       <ScrollAreaPrimitive.Corner />
     </ScrollAreaPrimitive.Root>
   )
