@@ -6,6 +6,7 @@ import { Pnl } from '@/components/trades/trade-bits'
 import { Badge } from '@/components/ui/badge'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import {
+  LABEL_KIND_NAMES,
   STATUS_LABEL,
   TONE_CLASS,
   type TradeSummary,
@@ -43,6 +44,7 @@ export function TradesTable({
         <TableHeader>
           <TableRow className="hover:bg-transparent">
             <TableHead scope="col" className="w-52">Trade</TableHead>
+            <TableHead scope="col">Labels</TableHead>
             <TableHead scope="col">Opened</TableHead>
             <TableHead scope="col" className={numericCell}>
               Held
@@ -71,8 +73,9 @@ export function TradesTable({
           {trades.map((trade) => {
             const warnings = trade.issues.filter((i) => i.severity !== 'info')
             const labels = trade.annotation
-              ? [...trade.annotation.edges, ...trade.annotation.entryTactics, ...trade.annotation.tags]
+              ? [...trade.annotation.edges, ...trade.annotation.entryTactics, ...trade.annotation.tags, ...trade.annotation.mistakes]
               : []
+            const moreLabels = labels.slice(2).map((label) => `${LABEL_KIND_NAMES[label.kind]} · ${label.name}`).join(', ')
             return (
               <TableRow
                 key={trade.id}
@@ -106,18 +109,36 @@ export function TradesTable({
                           {STATUS_LABEL[trade.status]}
                         </span>
                       </p>
-                      {labels.length > 0 && (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {labels.map((label) => (
-                            <Badge key={label.id} variant="outline" className="h-4.5 gap-1 px-1.5 text-[11px] font-normal">
-                              <LabelDot color={label.color} />
-                              {label.name}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   </div>
+                </TableCell>
+                <TableCell>
+                  {labels.length > 0 ? (
+                    <div className="flex w-fit max-w-80 items-center gap-1.5">
+                      {labels.slice(0, 2).map((label) => (
+                        <Badge
+                          key={label.id}
+                          variant="secondary"
+                          title={`${LABEL_KIND_NAMES[label.kind]} · ${label.name}`}
+                          className="h-6 min-w-0 shrink gap-1.5 rounded-md font-normal"
+                        >
+                          {label.color && <LabelDot color={label.color} />}
+                          <span className="truncate">
+                            <span className="text-muted-foreground">{LABEL_KIND_NAMES[label.kind]} · </span>
+                            {label.name}
+                          </span>
+                        </Badge>
+                      ))}
+                      {moreLabels && (
+                        <span className="shrink-0 text-xs text-muted-foreground" title={moreLabels}>
+                          <span aria-hidden>+{labels.length - 2}</span>
+                          <span className="sr-only">{moreLabels}</span>
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="sr-only">No labels</span>
+                  )}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-sm text-muted-foreground">{formatDateTime(trade.openedAt)}</TableCell>
                 <TableCell className="text-sm text-muted-foreground tabular-nums">

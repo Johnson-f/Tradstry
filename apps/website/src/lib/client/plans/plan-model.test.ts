@@ -11,6 +11,7 @@ import {
   rebalanceLast,
   riskInDollars,
   sizePlan,
+  splitLastEntry,
   updateTranche,
 } from './plan-model'
 
@@ -84,6 +85,14 @@ describe('sizing', () => {
     expect(updateTranche(split, b.id, { percent: '30' }).map((t) => t.percent)).toEqual(['50', '30', '20'])
     expect(updateTranche(split, c.id, { percent: '70' }).map((t) => t.percent)).toEqual(['50', '', '70'])
     expect(rebalanceLast([a]).map((t) => t.percent)).toEqual(['100'])
+  })
+
+  test('adding an entry divides the last allocation and preserves the other prices and percentages', () => {
+    const first = splitLastEntry(ladder(['100', '20']))
+    expect(first.map((t) => [t.percent, t.entry])).toEqual([['50', '20'], ['50', '20']])
+    const next = splitLastEntry(ladder(['60.01', '20'], ['39.99', '19.80']))
+    expect(next.map((t) => [t.percent, t.entry])).toEqual([['60.01', '20'], ['19.995', '19.80'], ['19.995', '19.80']])
+    expect(updateTranche(next, next[0].id, { percent: '50' })[2].percent).toBe('30.005')
   })
 
   test('a rule with a percent starts the form in percent mode', () => {

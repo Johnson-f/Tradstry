@@ -23,6 +23,13 @@ export interface TradeIssue {
 
 export type LabelKind = 'EDGE' | 'ENTRY_TACTIC' | 'TAG' | 'MISTAKE'
 
+export const LABEL_KIND_NAMES: Record<LabelKind, string> = {
+  EDGE: 'Edge',
+  ENTRY_TACTIC: 'Entry tactic',
+  TAG: 'Tag',
+  MISTAKE: 'Mistake',
+}
+
 /** A journal label as it appears on a trade or in a statistic. */
 export interface LabelRef {
   id: string

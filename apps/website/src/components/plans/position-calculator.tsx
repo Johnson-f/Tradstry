@@ -5,15 +5,16 @@ import { CalculatorTab } from '@/components/plans/calculator-tab'
 import { TabEmpty } from '@/components/plans/calculator-bits'
 import { CalculatorSkeleton, RuleSkeleton } from '@/components/plans/calculator-skeletons'
 import { HistoryTab } from '@/components/plans/history-tab'
-import { type PlanSeed, PlansTab } from '@/components/plans/plans-tab'
+import { PlanComposer, type PlanSeed } from '@/components/plans/plan-composer'
+import { PlansTab } from '@/components/plans/plans-tab'
 import { RuleTab } from '@/components/plans/rule-tab'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { planForm, riskInDollars } from '@/lib/client/plans/plan-model'
 import { usePlanningRule, useTradePlans } from '@/lib/client/plans/plans'
-import { useSettings } from '@/lib/client/settings'
 import { useWorkspaces } from '@/lib/client/workspaces'
+import { toNumber } from '@/lib/client/trades/trades-model'
 
 function LoadFailed({ what }: { what: string }) {
   return (
@@ -41,22 +42,31 @@ export function PositionCalculator({
 }) {
   const [tab, setTab] = useState<CalculatorTabName>('calculator')
   const [seed, setSeed] = useState<PlanSeed | null>(null)
-  const settings = useSettings()
+  const [planMessage, setPlanMessage] = useState('')
   const rule = usePlanningRule(workspaceId, open)
   const plans = useTradePlans(workspaceId, open)
   const workspaces = useWorkspaces()
   const workspaceName = workspaces.data?.find((workspace) => workspace.id === workspaceId)?.name ?? 'this workspace'
   const openCount = plans.data?.filter((plan) => plan.status === 'OPEN').length ?? 0
+  const calculatorReady = Boolean(rule.data)
+  const tabHasFooter = ((tab === 'calculator' || tab === 'rule') && calculatorReady) || (tab === 'plans' && !!seed)
 
   return (
     <Dialog
       open={open}
       onOpenChange={(next) => {
         onOpenChange(next)
-        if (!next) setSeed(null)
+        if (!next) {
+          setSeed(null)
+          setPlanMessage('')
+        }
       }}
     >
-      <DialogContent className="flex max-h-[calc(100dvh-2rem)] min-h-[560px] flex-col overflow-hidden font-[Arial,Helvetica,sans-serif] sm:max-w-2xl data-open:animate-none data-closed:animate-none">
+      <DialogContent
+        data-tab={tab}
+        data-plan-list={tab === 'plans' && !seed ? '' : undefined}
+        className="flex max-h-[calc(100dvh-2rem)] min-h-[min(560px,calc(100dvh-2rem))] flex-col overflow-hidden font-[Arial,Helvetica,sans-serif] data-[tab=calculator]:h-[min(40rem,calc(100dvh-2rem))] data-plan-list:h-[min(35rem,calc(100dvh-2rem))] sm:max-w-2xl sm:data-[tab=plans]:max-w-3xl data-open:animate-none data-closed:animate-none"
+      >
         <DialogHeader className="shrink-0">
           <DialogTitle className="flex items-center gap-2 font-[Arial,Helvetica,sans-serif]">
             <span className="flex size-7 items-center justify-center rounded-md bg-muted text-muted-foreground">
@@ -64,13 +74,15 @@ export function PositionCalculator({
             </span>
             Position Calculator
           </DialogTitle>
-          <DialogDescription>Calculate your position size based on your account risk.</DialogDescription>
+          <DialogDescription className={tab === 'plans' ? 'sr-only' : undefined}>
+            {tab === 'plans' ? 'Review and save your trade plans.' : 'Calculate your position size based on your account risk.'}
+          </DialogDescription>
         </DialogHeader>
 
         <Tabs
           value={tab}
           onValueChange={(next: CalculatorTabName) => setTab(next)}
-          className="min-h-0 flex-1 overflow-hidden"
+          className="min-h-0 flex-1 overflow-y-clip"
         >
           <TabsList className="shrink-0">
             <TabsTrigger value="calculator">Calculator</TabsTrigger>
@@ -82,36 +94,55 @@ export function PositionCalculator({
             <TabsTrigger value="rule">Rule</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="calculator" className={panelClass}>
-            {rule.data && settings.data ? (
+          <TabsContent value="calculator" className={calculatorReady ? 'flex min-h-0 flex-col' : panelClass}>
+            {rule.data ? (
               <CalculatorTab
-                key={`${workspaceId}-${rule.data.balance}`}
+                key={workspaceId}
                 workspaceId={workspaceId}
                 rule={rule.data}
-                defaultRisk={settings.data.defaultRisk}
                 onPlan={(form, balance) => {
-                  setSeed({ form: { ...form, riskMode: 'DOLLARS', risk: (riskInDollars(form, balance) ?? 0).toFixed(2) }, balance, editing: null })
+                  setPlanMessage('')
+                  setSeed({
+                    draftId: crypto.randomUUID(),
+                    form: { ...form, riskMode: 'DOLLARS', risk: (riskInDollars(form, balance) ?? 0).toFixed(2) },
+                    balance,
+                    editing: null,
+                  })
                   setTab('plans')
                 }}
               />
-            ) : rule.isError || settings.isError ? (
+            ) : rule.isError ? (
               <LoadFailed what="the calculator" />
             ) : (
               <CalculatorSkeleton />
             )}
           </TabsContent>
 
-          <TabsContent value="plans" className={panelClass}>
-            <PlansTab
-              workspaceId={workspaceId}
-              plans={plans.data}
-              loading={plans.isPending}
-              failed={plans.isError}
-              seed={seed}
-              onEdit={(plan) => setSeed({ form: planForm(plan), balance: null, editing: plan })}
-              onDone={() => setSeed(null)}
-              onCalculator={() => setTab('calculator')}
-            />
+          <TabsContent value="plans" keepMounted={!!seed} className="flex min-h-0 flex-col font-sans hidden:hidden">
+            {seed ? (
+              <PlanComposer
+                key={seed.draftId}
+                workspaceId={workspaceId}
+                seed={seed}
+                maxStop={toNumber(rule.data?.maxStopPercent)}
+                onCancel={() => {
+                  if (!seed.editing) setTab('calculator')
+                  setSeed(null)
+                }}
+                onSaved={() => {
+                  setPlanMessage(`${seed.form.symbol} plan saved`)
+                  setSeed(null)
+                }}
+              />
+            ) : (
+              <PlansTab workspaceId={workspaceId} plans={plans.data} loading={plans.isPending} failed={plans.isError}
+                onEdit={(plan) => {
+                  setPlanMessage('')
+                  setSeed({ draftId: plan.id, form: planForm(plan), balance: null, editing: plan })
+                }}
+                onCalculator={() => setTab('calculator')}
+              />
+            )}
           </TabsContent>
 
           <TabsContent value="history" className={panelClass}>
@@ -125,7 +156,7 @@ export function PositionCalculator({
             />
           </TabsContent>
 
-          <TabsContent value="rule" className={panelClass}>
+          <TabsContent value="rule" className={rule.data ? 'flex min-h-0 flex-col' : panelClass}>
             {rule.data ? (
               <RuleTab
                 key={workspaceId}
@@ -141,11 +172,12 @@ export function PositionCalculator({
           </TabsContent>
         </Tabs>
 
-        <div className="flex shrink-0 justify-end">
-          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-            Close
-          </Button>
-        </div>
+        {!tabHasFooter && (
+          <div className="flex shrink-0 items-center justify-end gap-2">
+            {tab === 'plans' && planMessage && <span role="status" className="mr-auto text-xs text-muted-foreground">{planMessage}</span>}
+            <DialogClose render={<Button type="button" variant="outline" />}>Close</DialogClose>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   )

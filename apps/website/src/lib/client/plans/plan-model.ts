@@ -130,9 +130,18 @@ export function rebalanceLast(tranches: TrancheDraft[]): TrancheDraft[] {
   if (tranches.length === 0) return tranches
   if (tranches.length === 1) return [{ ...tranches[0], percent: '100' }]
   const others = tranches.slice(0, -1)
-  const used = others.reduce((sum, tranche) => sum + (Number(tranche.percent) || 0), 0)
-  const remainder = Math.max(0, Math.round((100 - used) * 100) / 100)
+  const used = others.reduce((sum, tranche) => sum + (amount(tranche.percent) || 0), 0)
+  const remainder = Math.max(0, Number((100 - used).toFixed(12)))
   return [...others, { ...tranches[tranches.length - 1], percent: String(remainder) }]
+}
+
+/** Split the last entry's allocation so earlier custom percentages stay in place. */
+export function splitLastEntry(tranches: TrancheDraft[]): TrancheDraft[] {
+  const last = tranches.at(-1)
+  if (!last || tranches.length >= MAX_TRANCHES) return tranches
+  const share = amount(last.percent)
+  const percent = share !== null && Number.isFinite(share) && share > 0 ? String(share / 2) : ''
+  return [...tranches.slice(0, -1), { ...last, percent }, newTranche(last.entry, percent)]
 }
 
 /** Editing any entry's percent but the last rebalances the last; editing the last is left as typed. */

@@ -2,7 +2,7 @@ import { Combobox } from '@base-ui/react/combobox'
 import { Check, CircleAlert, MousePointer2, Plus, Tag, Target, X } from 'lucide-react'
 import { useState } from 'react'
 import { type JournalLabel, labelsOf, useCreateLabel, useJournalLabels } from '@/lib/client/trades/labels'
-import { type LabelKind, type LabelRef, tradeErrorMessage } from '@/lib/client/trades/trades-model'
+import { LABEL_KIND_NAMES, type LabelKind, type LabelRef, tradeErrorMessage } from '@/lib/client/trades/trades-model'
 
 interface Option {
   id: string
@@ -14,7 +14,6 @@ interface Option {
 
 const CREATE_ID = 'create'
 const LABEL_ICONS = { EDGE: Target, ENTRY_TACTIC: MousePointer2, TAG: Tag, MISTAKE: CircleAlert }
-const LABEL_NAMES = { EDGE: 'edge', ENTRY_TACTIC: 'entry tactic', TAG: 'tag', MISTAKE: 'mistake' }
 
 const sameName = (a: string, b: string) =>
   a.trim().replace(/\s+/g, ' ').toLocaleLowerCase() === b.trim().replace(/\s+/g, ' ').toLocaleLowerCase()
@@ -178,7 +177,7 @@ export function LabelMultiSelect({
           />
         </Combobox.Chips>
       </Combobox.InputGroup>
-      <Options kind={props.kind} empty={`Type a name to create a ${LABEL_NAMES[props.kind]}.`} />
+      <Options kind={props.kind} empty={`Type a name to create a ${LABEL_KIND_NAMES[props.kind].toLowerCase()}.`} />
     </Combobox.Root>
   )
 }
