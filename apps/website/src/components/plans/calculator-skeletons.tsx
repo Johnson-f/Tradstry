@@ -17,29 +17,24 @@ function FieldSkeleton() {
   )
 }
 
-/** The calculator's shape: symbol and toggles, then the four price and risk fields. */
+/** Symbol and toggles, followed by the entry and stop prices. */
 export function CalculatorSkeleton() {
   return (
     <Loading label="Loading the calculator">
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="grid gap-2">
-          <Skeleton className="h-4 w-14" />
-          <Skeleton className="h-8 w-40" />
+      <div className="grid grid-cols-2 items-end gap-3 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:gap-4">
+        <div className="col-span-2 sm:col-span-1">
+          <FieldSkeleton />
         </div>
-        <div className="flex gap-4">
-          <div className="grid gap-2">
-            <Skeleton className="h-4 w-12" />
-            <Skeleton className="h-7 w-32" />
-          </div>
-          <div className="grid gap-2">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-7 w-28" />
-          </div>
+        <div className="grid gap-2">
+          <Skeleton className="h-4 w-12" />
+          <Skeleton className="h-7 w-24" />
+        </div>
+        <div className="grid gap-2">
+          <Skeleton className="h-4 w-12" />
+          <Skeleton className="h-7 w-24" />
         </div>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <FieldSkeleton />
-        <FieldSkeleton />
+      <div className="grid grid-cols-2 gap-4">
         <FieldSkeleton />
         <FieldSkeleton />
       </div>
@@ -69,21 +64,23 @@ export function CardsSkeleton({ label }: { label: string }) {
   )
 }
 
-/** The rule's three settings rows. */
+/** Workspace balance and risk budget, then the two percentage fields. */
 export function RuleSkeleton() {
   return (
     <Loading label="Loading your rule">
-      <Skeleton className="h-4 w-3/4" />
-      <div className="divide-y divide-border rounded-lg border border-border">
-        {[0, 1, 2].map((index) => (
-          <div key={index} className="flex items-center justify-between gap-6 px-4 py-3.5">
-            <div className="grid gap-1.5">
-              <Skeleton className="h-4 w-28" />
-              <Skeleton className="h-3 w-56" />
-            </div>
-            <Skeleton className="h-8 w-24" />
-          </div>
-        ))}
+      <div className="grid gap-4 rounded-xl border bg-muted/30 p-4 sm:px-5">
+        <div className="grid gap-2 border-b pb-3">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-3 w-48 max-w-full" />
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FieldSkeleton />
+          <FieldSkeleton />
+        </div>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <FieldSkeleton />
+        <FieldSkeleton />
       </div>
     </Loading>
   )

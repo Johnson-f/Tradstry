@@ -105,23 +105,6 @@ export function ChoiceToggle<T extends string>({
   )
 }
 
-export function ResultRow({ label, value, strong, tone }: { label: string; value: React.ReactNode; strong?: boolean; tone?: 'bad' }) {
-  return (
-    <div className="flex items-center justify-between gap-4 py-1">
-      <span className="text-sm text-muted-foreground">{label}</span>
-      <span
-        className={cn(
-          'text-sm tabular-nums',
-          strong ? 'text-base font-semibold' : 'font-medium',
-          tone === 'bad' && 'text-destructive',
-        )}
-      >
-        {value}
-      </span>
-    </div>
-  )
-}
-
 export function Notice({ children }: { children: React.ReactNode }) {
   return (
     <p className="flex items-start gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">

@@ -429,7 +429,7 @@ export function AnnotationEditor({
       <DialogContent
         initialFocus={labelsTab}
         overlayClassName="bg-black/25 data-open:animate-none data-closed:animate-none"
-        className="@container/note-editor flex h-[min(26rem,85dvh)] max-w-[calc(100vw-1.5rem)] flex-col gap-0 overflow-hidden rounded-2xl p-0 font-sans shadow-xl sm:max-w-[38rem] data-open:animate-none data-closed:animate-none [&>[data-slot=dialog-close]]:top-4 [&>[data-slot=dialog-close]]:right-4"
+        className="@container/note-editor flex h-[min(38rem,calc(100dvh-2rem))] w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden rounded-2xl p-0 font-sans shadow-xl sm:max-w-3xl data-open:animate-none data-closed:animate-none [&>[data-slot=dialog-close]]:top-4 [&>[data-slot=dialog-close]]:right-4"
       >
         <DialogHeader className="shrink-0 gap-1.5 px-5 pt-5 pb-3 pr-14 sm:px-6 sm:pr-14">
           <DialogTitle className="text-xl leading-7 font-semibold tracking-tight">Trade Detail</DialogTitle>

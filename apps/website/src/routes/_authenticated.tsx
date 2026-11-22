@@ -164,7 +164,7 @@ function AppLayout() {
           </div>
         </aside>
       </TooltipProvider>
-      {workspaceId && <PositionCalculator workspaceId={workspaceId} open={plannerOpen} onOpenChange={setPlannerOpen} />}
+      {workspaceId && <PositionCalculator key={workspaceId} workspaceId={workspaceId} open={plannerOpen} onOpenChange={setPlannerOpen} />}
 
       <div className="flex min-w-0 flex-1 overflow-hidden rounded-2xl bg-white dark:bg-neutral-900">
         <div className="flex min-w-0 flex-1 flex-col">
